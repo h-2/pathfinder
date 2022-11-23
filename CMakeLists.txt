@@ -35,7 +35,7 @@ endif ()
 message ("\n${ColourBold}Dependency detection${ColourReset}")
 
 # ZLIB
-find_package(ZLIB   QUIET)
+find_package(ZLIB QUIET REQUIRED)
 
 # CEREAL
 set(BUILD_SANDBOX OFF)
@@ -52,7 +52,8 @@ set(FMT_TEST OFF)
 add_subdirectory(submodules/fmt)
 
 # BIO
-find_package (biocpp COMPONENTS core io REQUIRED HINTS "${CMAKE_SOURCE_DIR}/submodules/biocpp-core/build_system")
+find_package (biocpp COMPONENTS core io QUIET REQUIRED HINTS "${CMAKE_SOURCE_DIR}/submodules/biocpp-core/build_system")
+
 # SHARG
 find_package (sharg QUIET REQUIRED HINTS "${CMAKE_SOURCE_DIR}/submodules/sharg-parser/build_system")
 
