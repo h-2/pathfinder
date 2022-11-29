@@ -36,7 +36,7 @@ int main(int argc, char const ** argv)
     }
     catch (std::exception const & ext)
     {
-        fmt::print("[Pathfinder ERROR] {}\n", ext.what());
+        fmt::print(stderr, "[Pathfinder ERROR] {}\n", ext.what());
         return -1;
     }
 

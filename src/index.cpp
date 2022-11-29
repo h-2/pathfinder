@@ -52,4 +52,9 @@ void index(index_options const & options)
 
     fmt::print("stable_seq_names: {}\n", prelim_graph.stable_sequence_names);
     fmt::print("seqs: {}\n",             prelim_graph.seqs);
+    fmt::print("#arcs: {}\n",            prelim_graph.arcs.concat_size());
+
+    print_all_paths(prelim_graph);
+
+    print_chunks(prelim_graph, 10);
 }
