@@ -27,12 +27,16 @@ int main(int argc, char const ** argv)
 
     try
     {
-        if (sub_parser.info.app_name == std::string_view{"index"})
+        if (sub_parser.info.app_name == std::string_view{"pathfinder-index"})
             parse_index(sub_parser);
 //         else if (sub_parser.info.app_name == std::string_view{"find"})
 //             parse_find(sub_parser);
         else
+        {
+            fmt::print(stderr, "[Pathfinder ERROR] Expected 'index' or 'find', got {}\n",
+                       sub_parser.info.app_name);
             __builtin_unreachable();
+        }
     }
     catch (std::exception const & ext)
     {
