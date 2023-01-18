@@ -1,6 +1,5 @@
-#include <string>
-
 #include <sharg/all.hpp>
+#include <string>
 
 struct index_options;
 
