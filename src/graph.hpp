@@ -304,11 +304,10 @@ inline void print_all_paths(visual_graph const & graph)
                 node const & n2 = graph.nodes[p.first];
                 return n2.seq | bio::ranges::detail::reverse_complement_or_not(p.second == orientation::minus);
             };
-            // auto to_sn = [&graph] (std::pair<size_t, orientation> const & p) -> std::string
-            // {
-            //     return graph.nodes[p.first].so >= 0 ?
-            //         fmt::format("{}:{}-{}", graph.nodes[p.first].sn, graph.nodes[p.first].so, graph.nodes[p.first].so + graph.nodes[p.first].seq.size()) : graph.nodes[p.first].sn;
-            // };
+            auto to_region = [&graph] (std::pair<size_t, orientation> const & p) -> auto &
+            {
+                return graph.nodes[p.first].regions;
+            };
 
             std::vector<bio::io::genomic_region> regions;
             for (auto && [i_node, o] : path)
@@ -326,9 +325,11 @@ inline void print_all_paths(visual_graph const & graph)
                 }
             }
 
-            fmt::print("Leaf node\n  names: {}\n  seqs: {}\n  regions: {}\n",
-                       path | std::views::transform(to_name),
-                       path | std::views::transform(to_seq),
+            fmt::print("PATH\nnames:\t{}\nseqs:\t{}\nregions:\t{}\nseq_join:\t{}\nregion_join:\t{}\n",
+                       fmt::join(path | std::views::transform(to_name), "\t"),
+                       fmt::join(path | std::views::transform(to_seq), "\t"),
+                       fmt::join(path | std::views::transform(to_region), "\t"),
+                       fmt::join(path | std::views::transform(to_seq), ""),
                        regions);
             return;
         }
