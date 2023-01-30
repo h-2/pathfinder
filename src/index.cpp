@@ -66,13 +66,15 @@ void index(index_options const & options)
     // fmt::print("#arcs: {}\n",            prelim_graph.arcs.concat_size());
 
     print_all_paths(graph);
+    // graph_to_dot(graph);
+    print_stats(graph);
 
-    graph_to_dot(graph);
 
     discretise(graph, options.window_size);
 
-    fmt::print("\n============================================\n\n");
+    fmt::print("\n=====\t=====\t======\t======\t=====\t====\t\n\n");
 
     print_all_paths(graph);
-    graph_to_dot(graph);
+    // graph_to_dot(graph);
+    print_stats(graph);
 }

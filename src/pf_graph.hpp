@@ -37,6 +37,7 @@ using pf_graph = std::vector<node>;
 
 inline void print_all_paths(pf_graph const & graph)
 {
+    fmt::print("PATHS\n======\n");
     auto fn = [&graph](auto self, std::vector<size_t> path, size_t const i_node)
     {
         path.push_back(i_node);
@@ -45,15 +46,15 @@ inline void print_all_paths(pf_graph const & graph)
         if (n.arcs.empty()) // no children → at end
         {
             auto to_name   = [&graph](size_t const i) -> auto & { return graph[i].name; };
-            auto to_seq    = [&graph](size_t const i) { return graph[i].seq; };
+            auto to_seq    = [&graph](size_t const i) -> auto & { return graph[i].seq; };
             auto to_region = [&graph](size_t const i) -> auto & { return graph[i].regions; };
 
             std::vector<bio::io::genomic_region> regions;
             for (size_t const i : path)
                 for (bio::io::genomic_region const & reg : graph[i].regions)
-                    append_region(regions, reg);
+                    append_region(reg, regions);
 
-            fmt::print("PATH\nnames:\t{}\nseqs:\t{}\nregions:\t{}\nseq_join:\t{}\nregion_join:\t{}\n",
+            fmt::print("path\nnames:\t{}\nseqs:\t{}\nregions:\t{}\nseq_join:\t{}\nregion_join:\t{}\n\n",
                        fmt::join(path | std::views::transform(to_name), "\t"),
                        fmt::join(path | std::views::transform(to_seq), "\t"),
                        fmt::join(path | std::views::transform(to_region), "\t"),
@@ -70,6 +71,8 @@ inline void print_all_paths(pf_graph const & graph)
     };
 
     fn(fn, {}, 0);
+
+    fmt::print("\n");
 }
 
 inline void graph_to_dot(pf_graph const & graph)
@@ -83,8 +86,30 @@ inline void graph_to_dot(pf_graph const & graph)
             fmt::print("\"{}\" -> \"{}\"\n", n.name, graph[target_node_i].name);
     }
 
-    fmt::print("{}\n", "}");
+    fmt::print("{}\n\n", "}");
 }
+
+inline void print_stats(pf_graph const & graph)
+{
+    fmt::print("STATS\n======\n");
+
+    fmt::print("Node count:\t{}\n", graph.size());
+
+    std::vector<size_t> seq_lengths = graph | std::views::transform([] (node const & n) { return n.seq.size(); }) | bio::ranges::to<std::vector>();
+    std::ranges::sort(seq_lengths);
+
+    fmt::print("Seq lengths\t| min\t| med\t| max\t| avg\n\t\t  {}\t  {}\t  {}\t  {:.2f}\n",
+               seq_lengths.front(),
+               seq_lengths[seq_lengths.size()/2],
+               seq_lengths.back(),
+               std::reduce(seq_lengths.begin(), seq_lengths.end(), 0.0) / seq_lengths.size());
+
+    fmt::print("\n");
+}
+
+//-----------------------------------------------------------------------------
+// graph modification
+//-----------------------------------------------------------------------------
 
 inline void erase_todo_nodes(pf_graph & graph)
 {
@@ -262,18 +287,18 @@ inline void discretise(pf_graph & graph, int64_t const w)
 
                 if (bio::io::genomic_region & reg = old_node.regions.back(); reg.beg <= reg.end)
                 {
-                    append_region(new_node.regions,
-                                  bio::io::genomic_region{reg.chrom,
+                    append_region(bio::io::genomic_region{reg.chrom,
                                                           reg.beg + old_node_offset,
-                                                          reg.beg + old_node_offset + taken_size});
+                                                          reg.beg + old_node_offset + taken_size},
+                                  new_node.regions);
                 }
                 else
                 {
                     assert(reg.beg - reg.end == ssize(old_node.seq));
-                    append_region(new_node.regions,
-                                  bio::io::genomic_region{reg.chrom,
+                    append_region(bio::io::genomic_region{reg.chrom,
                                                           reg.beg - old_node_offset,
-                                                          reg.beg - old_node_offset - taken_size});
+                                                          reg.beg - old_node_offset - taken_size},
+                                  new_node.regions);
                 }
 
                 std::ranges::copy(old_seq | std::views::take(taken_size), std::back_inserter(new_node.seq));
@@ -327,9 +352,66 @@ inline void discretise(pf_graph & graph, int64_t const w)
         graph.back().arcs = graph[path.back()].arcs;
     }
 
+
     /* Step 3:
      *
      * Remove the left-overs
      */
     erase_todo_nodes(graph);
+
+    print_all_paths(graph);
+
+    /* Step 4:
+     *
+     * Merge adjacent small ref nodes
+     *
+     *          ---·NR1
+     *         /
+     * R1·---·R2---·R3
+     *
+     * Step 2 turns the previous into:
+     *
+     * R1·---------·NR1
+     *
+     * R1·---·R2---·R3
+     *
+     * Now we remove R2:
+     *
+     * R1·--------·NR1
+     *
+     * R1·--------·R3
+     */
+
+    std::vector<size_t> in_degrees;
+    in_degrees.resize(graph.size());
+    for (node & n : graph)
+        for (size_t const i_target_node : n.arcs)
+            ++in_degrees[i_target_node];
+
+    auto can_consume_next = [&graph, &in_degrees, w] (node const & n)
+    {
+        return n.arcs.size() == 1 &&                                            // n's out-degree == 1
+               in_degrees[n.arcs.front()] == 1 &&                               // next's in-degree == 1
+               graph[n.arcs.front()].is_ref &&                                  // target is also ref
+               (n.regions.size() == 1 && n.regions.front().beg % w == 0) &&     // reg begins on block border
+               (n.seq.size() + graph[n.arcs.front()].seq.size() <= 3 * w / 2);  // merged size within limits
+    };
+    auto consume_next = [&graph] (node & n)
+    {
+        node & next_n = graph[n.arcs.front()];
+        n.name += "+";
+        n.name += next_n.name;
+        assign_append(next_n.seq, n.seq);
+        n.arcs = std::move(next_n.arcs);
+        append_regions(std::move(next_n.regions), n.regions);
+        next_n.tobe_deleted = true;
+    };
+
+    // TODO do we need multiple passes of this on larger graphs?
+    for (node & n : graph)
+        if (n.is_ref && !n.tobe_deleted && can_consume_next(n))
+            consume_next(n);
+
+    erase_todo_nodes(graph);
+
 }

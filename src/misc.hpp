@@ -37,19 +37,31 @@ struct fmt::formatter<bio::io::genomic_region> : fmt::formatter<std::string>
     }
 };
 
-inline void append_region(std::vector<bio::io::genomic_region> &                vec,
-                          bio::meta::decays_to<bio::io::genomic_region> auto && reg)
+inline void append_region(bio::meta::decays_to<bio::io::genomic_region> auto && reg,
+                          std::vector<bio::io::genomic_region> &                dest)
 {
     assert(reg.beg != reg.end);
 
-    if (!vec.empty() &&                                               // there is previous region
-        vec.back().chrom == reg.chrom && vec.back().end == reg.beg && // they touch
-        ((vec.back().beg <= vec.back().end) == (reg.beg <= reg.end))) // same orientation
+    if (!dest.empty() &&                                               // there is previous region
+        dest.back().chrom == reg.chrom && dest.back().end == reg.beg && // they touch
+        ((dest.back().beg <= dest.back().end) == (reg.beg <= reg.end))) // same orientation
     {
-        vec.back().end = reg.end;
+        dest.back().end = reg.end;
     }
     else
     {
-        vec.push_back(std::forward<decltype(reg)>(reg));
+        dest.push_back(std::forward<decltype(reg)>(reg));
+    }
+}
+
+inline void append_regions(bio::meta::decays_to<std::vector<bio::io::genomic_region>> auto && source,
+                           std::vector<bio::io::genomic_region> &                             dest)
+{
+    for (bio::io::genomic_region & reg : source)
+    {
+        if constexpr (std::is_lvalue_reference_v<decltype(source)>)
+            append_region(reg, dest);
+        else
+            append_region(std::move(reg), dest);
     }
 }

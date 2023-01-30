@@ -44,12 +44,11 @@ struct gfa_node
     std::vector<bio::alphabet::dna5> seq;
     std::string                      name;
 
-    std::string sn;     // this is set to "chr1:1-4,chr2:3-12" for virtual nodes
-    int64_t     so = 0; // this is set to -1 for "virtual nodes"
+    std::string sn;
+    int64_t     so = 0;
     int64_t     sr = 0;
 
     std::vector<arc>                     arcs;
-    std::vector<bio::io::genomic_region> regions;
 };
 
 struct gfa_graph
@@ -214,11 +213,6 @@ inline void read_graph(std::filesystem::path const & path, gfa_graph & graph)
                 break;
         }
     }
-
-    // for (node & n : graph.nodes)
-    // {
-    //     n.regions.push_back(node_to_region(n));
-    // }
 }
 
 inline bio::io::genomic_region node_to_region(gfa_node const & n)
