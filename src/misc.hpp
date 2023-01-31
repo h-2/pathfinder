@@ -42,7 +42,7 @@ inline void append_region(bio::meta::decays_to<bio::io::genomic_region> auto && 
 {
     assert(reg.beg != reg.end);
 
-    if (!dest.empty() &&                                               // there is previous region
+    if (!dest.empty() &&                                                // there is previous region
         dest.back().chrom == reg.chrom && dest.back().end == reg.beg && // they touch
         ((dest.back().beg <= dest.back().end) == (reg.beg <= reg.end))) // same orientation
     {

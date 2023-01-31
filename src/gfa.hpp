@@ -48,7 +48,7 @@ struct gfa_node
     int64_t     so = 0;
     int64_t     sr = 0;
 
-    std::vector<arc>                     arcs;
+    std::vector<arc> arcs;
 };
 
 struct gfa_graph
@@ -240,7 +240,7 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
             if (a.orient_self == orientation::minus)
                 orig_to_rc[out_graph.size()] = -1; // new index is still unknown
             if (a.orient_target == orientation::minus)
-                orig_to_rc[a.target_node_i] = -1;  // new index is still unknown
+                orig_to_rc[a.target_node_i] = -1; // new index is still unknown
 
             /* we copy only plus→plus arcs here */
             if (a.orient_self == orientation::plus && a.orient_target == orientation::plus)

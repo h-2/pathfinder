@@ -80,3 +80,25 @@ add_subdirectory(src)
 #enable_testing ()
 #add_subdirectory (test EXCLUDE_FROM_ALL)
 
+#--------------------------------------------------------------------------------------------------
+# Clang format target
+#--------------------------------------------------------------------------------------------------
+
+find_program(CLANG_FORMAT "clang-format-14")
+
+if (CLANG_FORMAT STREQUAL "CLANG_FORMAT-NOTFOUND")
+    find_program(CLANG_FORMAT "clang-format")
+endif()
+
+if (NOT CLANG_FORMAT STREQUAL "CLANG_FORMAT-NOTFOUND")
+    add_custom_target (check_format "find" "${CMAKE_CURRENT_SOURCE_DIR}/src" "-name" "'*.[ch]pp'" "-exec"
+                       ${CLANG_FORMAT} "-style=file" "-n" "-Werror" "{}" "+"
+                       COMMENT "Checking the source-code with clang-format.")
+
+
+    add_custom_target (reformat "find" "${CMAKE_CURRENT_SOURCE_DIR}/src" "-name" "'*.[ch]pp'" "-exec"
+                       ${CLANG_FORMAT} "-style=file" "-i" "{}" "+"
+                       COMMENT "Reformatting the source-code with clang-format.")
+else ()
+    message(STATUS "clang_format not found; not adding the 'check_format' and 'reformat' targets.")
+endif()
