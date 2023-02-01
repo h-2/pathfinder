@@ -238,7 +238,7 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
         for (arc const & a : in.arcs)
         {
             if (a.orient_self == orientation::minus)
-                orig_to_rc[out_graph.size()] = -1; // new index is still unknown
+                orig_to_rc[out_graph.nodes.size()] = -1; // new index is still unknown
             if (a.orient_target == orientation::minus)
                 orig_to_rc[a.target_node_i] = -1; // new index is still unknown
 
@@ -247,7 +247,7 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
                 on.arcs.push_back(a.target_node_i);
         }
 
-        out_graph.push_back(std::move(on));
+        out_graph.nodes.push_back(std::move(on));
     }
 
     /* add rc nodes */
@@ -257,7 +257,7 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
         size_t &     i_rc = p.second;
 
         gfa_node const & in = ingraph.nodes[i];
-        node const &     on = out_graph[i];
+        node const &     on = out_graph.nodes[i];
 
         node on_rc{.name = on.name + "_rc",
                    .seq  = on.seq | std::views::reverse | bio::views::complement | bio::ranges::to<std::vector>(),
@@ -271,15 +271,15 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
             if (a.orient_self == orientation::minus && a.orient_target == orientation::plus)
                 on_rc.arcs.push_back(a.target_node_i);
 
-        i_rc = out_graph.size(); // set index to index of new node
-        out_graph.push_back(std::move(on_rc));
+        i_rc = out_graph.nodes.size(); // set index to index of new node
+        out_graph.nodes.push_back(std::move(on_rc));
     }
 
     /* add plus→minus arcs */
     for (size_t i = 0; i < ingraph.nodes.size(); ++i)
     {
         gfa_node const & in = ingraph.nodes[i];
-        node &           on = out_graph[i];
+        node &           on = out_graph.nodes[i];
 
         for (arc const & a : in.arcs)
             if (a.orient_self == orientation::plus && a.orient_target == orientation::minus)

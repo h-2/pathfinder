@@ -9,15 +9,6 @@
 
 #include "gfa.hpp"
 
-struct index_options
-{
-    std::filesystem::path gfa;
-    std::filesystem::path index;
-
-    size_t window_size = 100;
-    size_t k_mer_size  = 20;
-};
-
 void parse_index(sharg::parser & parser)
 {
     index_options options{};
@@ -45,6 +36,10 @@ void parse_index(sharg::parser & parser)
                         .validator   = sharg::arithmetic_range_validator{10, 30}
     });
 
+    parser.add_option(options.descriptive_node_names,
+                      sharg::config{.long_id     = "descriptive-node-names",
+                                    .description = "Whether to include original name in new node names."});
+
     parser.parse();
     index(options);
 }
@@ -65,15 +60,37 @@ void index(index_options const & options)
     // fmt::print("seqs: {}\n",             prelim_graph.seqs);
     // fmt::print("#arcs: {}\n",            prelim_graph.arcs.concat_size());
 
-    print_all_paths(graph);
+    // print_all_paths(graph);
     // graph_to_dot(graph);
+
     print_stats(graph);
 
-    discretise(graph, options.window_size);
+    fmt::print(stderr, "source_location: {}:{}\n", __FILE__, __LINE__);
+    std::cerr << std::flush;
+    auto before_paths = all_paths_as_collapsed_regions(graph);
+    fmt::print(stderr, "source_location: {}:{}\n", __FILE__, __LINE__);
+    std::cerr << std::flush;
+
+    discretise(graph, options);
 
     fmt::print("\n=====\t=====\t======\t======\t=====\t====\t\n\n");
 
-    print_all_paths(graph);
+    auto after_paths = all_paths_as_collapsed_regions(graph);
+
+    // print_all_paths(graph);
     // graph_to_dot(graph);
     print_stats(graph);
+
+    print_outlier_nodes(graph, options);
+
+    fmt::print("Sorting before_paths...");
+    std::ranges::sort(before_paths);
+    fmt::print("done.\n");
+
+    fmt::print("Sorting after_paths...");
+    std::ranges::sort(after_paths);
+    fmt::print("done.\n");
+
+    bool eq = std::ranges::equal(before_paths, after_paths);
+    fmt::print("Paths are equal: {}\n", eq);
 }

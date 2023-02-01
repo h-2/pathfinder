@@ -21,7 +21,7 @@ struct hash_string
 void assign_append(std::ranges::forward_range auto &&                                                  source,
                    std::ranges::output_range<std::ranges::range_reference_t<decltype(source)>> auto && sink)
 {
-    size_t old_sink_size = sink.size();
+    size_t const old_sink_size = sink.size();
     sink.resize(old_sink_size + source.size());
     std::ranges::copy(source, sink.begin() + old_sink_size);
 }
@@ -57,7 +57,7 @@ inline void append_region(bio::meta::decays_to<bio::io::genomic_region> auto && 
 inline void append_regions(bio::meta::decays_to<std::vector<bio::io::genomic_region>> auto && source,
                            std::vector<bio::io::genomic_region> &                             dest)
 {
-    for (bio::io::genomic_region & reg : source)
+    for (bio::meta::decays_to<bio::io::genomic_region> auto && reg : source)
     {
         if constexpr (std::is_lvalue_reference_v<decltype(source)>)
             append_region(reg, dest);
