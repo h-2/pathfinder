@@ -4,7 +4,6 @@
 #include <string>
 
 #include <bio/alphabet/fmt.hpp>
-
 #include <bio/io/genomic_region.hpp>
 
 inline constexpr auto ssize = std::ranges::ssize;

@@ -10,15 +10,14 @@
 
 #include <bio/alphabet/fmt.hpp>
 #include <bio/alphabet/nucleotide/dna5.hpp>
+#include <bio/io/genomic_region.hpp>
+#include <bio/io/txt/misc.hpp>
+#include <bio/io/txt/reader.hpp>
 #include <bio/ranges/container/concatenated_sequences.hpp>
 #include <bio/ranges/to.hpp>
 #include <bio/ranges/views/add_reverse_complement.hpp>
 #include <bio/ranges/views/char_strictly_to.hpp>
 #include <bio/ranges/views/complement.hpp>
-
-#include <bio/io/genomic_region.hpp>
-#include <bio/io/txt/misc.hpp>
-#include <bio/io/txt/reader.hpp>
 
 #include "misc.hpp"
 #include "pf_graph.hpp"
@@ -263,7 +262,7 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
                    .seq  = on.seq | std::views::reverse | bio::views::complement | bio::ranges::to<std::vector>(),
                    .arcs{},
                    .regions{{on.regions.front().chrom, on.regions.front().end, on.regions.front().beg}},
-                   .is_ref       = on.is_ref,
+                   .is_ref       = false, // we treat rc'ed ref node as non-ref!
                    .tobe_deleted = false};
 
         /* we copy only minus→plus arcs here */
@@ -290,6 +289,9 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
     }
 
     erase_todo_nodes(out_graph);
+
+    /* determine nodes with in-degree 0 */
+    recompute_in_nodes(out_graph);
 }
 
 // TODO do we need something to print gfa_graph as well?

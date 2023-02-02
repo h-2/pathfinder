@@ -93,4 +93,16 @@ void index(index_options const & options)
 
     bool eq = std::ranges::equal(before_paths, after_paths);
     fmt::print("Paths are equal: {}\n", eq);
+    if (!eq)
+    {
+        FILE * file = std::fopen("before.txt", "w");
+        for (auto const & pth : before_paths)
+            fmt::print(file, "{}\n", pth);
+        std::fclose(file);
+
+        file = std::fopen("after.txt", "w");
+        for (auto const & pth : after_paths)
+            fmt::print(file, "{}\n", pth);
+        std::fclose(file);
+    }
 }
