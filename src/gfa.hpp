@@ -292,6 +292,8 @@ inline void gfa_graph2pf_graph(gfa_graph const & ingraph, pf_graph & out_graph)
 
     /* determine nodes with in-degree 0 */
     recompute_in_nodes(out_graph);
+
+    recompute_region_to_i(out_graph);
 }
 
 // TODO do we need something to print gfa_graph as well?

@@ -17,6 +17,22 @@ struct hash_string
     std::size_t operator()(std::string_view const & v) const { return std::hash<std::string_view>{}(v); }
 };
 
+struct hash_regs
+{
+    std::size_t operator()(std::span<bio::io::genomic_region const> regs) const
+    {
+        size_t ret = 0;
+        for (bio::io::genomic_region const reg : regs)
+        {
+            ret ^= std::hash<std::string>{}(reg.chrom);
+            ret ^= std::hash<int64_t>{}(reg.beg);
+            ret ^= std::hash<int64_t>{}(reg.end);
+        }
+
+        return ret;
+    }
+};
+
 void assign_append(std::ranges::forward_range auto &&                                                  source,
                    std::ranges::output_range<std::ranges::range_reference_t<decltype(source)>> auto && sink)
 {

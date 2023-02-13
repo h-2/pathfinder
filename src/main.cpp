@@ -42,11 +42,15 @@ int main(int argc, char const ** argv)
             __builtin_unreachable();
         }
     }
+#ifndef NDEBUG
+    catch (void *)
+    {}
+#else
     catch (std::exception const & ext)
     {
         fmt::print(stderr, "[Pathfinder ERROR] {}\n", ext.what());
         return -1;
     }
-
+#endif
     return 0;
 }

@@ -38,6 +38,9 @@ struct pf_graph
 
     //TODO pull sequences out of the nodes
     // std::unordered_map<std::string, std::vector<bio::alphabet::dna5>>
+
+    std::unordered_map<std::span<bio::io::genomic_region const>, size_t, hash_regs, decltype(std::ranges::equal)>
+      region_to_node_i;
 };
 
 //-----------------------------------------------------------------------------
@@ -324,6 +327,37 @@ inline void recompute_in_nodes(pf_graph & graph)
             graph.in_nodes.insert(i);
 }
 
+inline void recompute_region_to_i(pf_graph & graph)
+{
+    graph.region_to_node_i.clear();
+    for (size_t i = 0; i < graph.nodes.size(); ++i)
+    {
+        node const & n = graph.nodes[i];
+        if (graph.region_to_node_i.contains(n.regions))
+        {
+            size_t new_i = graph.region_to_node_i[n.regions];
+            throw std::runtime_error{fmt::format("Region<->node relation not unique: {}: {}\n{}: {}\n",
+                                                 i,
+                                                 graph.nodes[i].regions,
+                                                 new_i,
+                                                 graph.nodes[new_i].regions)};
+        }
+        else
+        {
+            graph.region_to_node_i[n.regions] = i;
+        }
+    }
+}
+
+inline void deduplicate_arcs(pf_graph & graph)
+{
+    for (node & n : graph.nodes)
+    {
+        std::ranges::sort(n.arcs);
+        n.arcs.erase(std::unique(n.arcs.begin(), n.arcs.end()), n.arcs.end());
+    }
+}
+
 //-----------------------------------------------------------------------------
 // graph modification
 //-----------------------------------------------------------------------------
@@ -397,6 +431,9 @@ inline void discretise(pf_graph & graph, index_options const & opts)
         }
     }
 
+    recompute_in_nodes(graph);
+    recompute_region_to_i(graph);
+
     /* Step 2:
      *
      * For every non-ref path, the "concatenation" is created and then that is then split into a new path
@@ -414,6 +451,11 @@ inline void discretise(pf_graph & graph, index_options const & opts)
      * e.g. total_length of path = 82 and w = 10 then n_new_nodes == 8, chunk_size == 10,  last_chunk_size == 12
      *
      * It is possible to switch with a macro between these modes; currently 2 is the default
+     *
+     * After the new path is created, the newly-defined nodes are checked to see if identical nodes already exist
+     * in the graph (from previous decomposition), and if yes, these are used by the new path; if not, the new
+     * nodes are added to the graph.
+     * Old nodes are marked for deletion.
      */
     {
         std::vector<std::vector<size_t>> const paths = generate_all_non_ref_paths(graph);
@@ -426,8 +468,11 @@ inline void discretise(pf_graph & graph, index_options const & opts)
         //                                             { return graph.nodes[i].name; }));
         // }
 
+        std::vector<node> new_path; // the new path is created in this temporary initially
         for (std::vector<size_t> const & path : paths)
         {
+            new_path.clear();
+
             auto seqs  = path | std::views::transform([&](size_t i) -> auto & { return graph.nodes[i].seq; });
             auto sizes = seqs | std::views::transform([](auto && span) { return span.size(); });
 
@@ -450,19 +495,16 @@ inline void discretise(pf_graph & graph, index_options const & opts)
             assert(double(last_chunk_size) >= 0.5 * w || last_chunk_size == total_length);
             assert(double(last_chunk_size) <= 1.5 * w);
 
-            size_t  i_old_node      = 0ul;
-            int64_t old_node_offset = 0l;
+            size_t  i_old_node      = 0ul; // this is in index into path, so it is is index of index of a node
+            int64_t old_node_offset = 0l;  // offest in the current old node
 
-            for (int64_t i_new_node = 0l; i_new_node < n_new_nodes; ++i_new_node)
+            for (int64_t i_new_node = 0l; i_new_node < n_new_nodes; ++i_new_node) // NOT an index into graph
             {
                 int64_t const actual_chunk_size = (i_new_node == n_new_nodes - 1) ? last_chunk_size : chunk_size;
 
-                node new_node{};
+                new_path.emplace_back();
+                node & new_node = new_path.back();
                 fmt::format_to(std::back_inserter(new_node.name), "v{}_", graph.nodes.size() + i_new_node);
-
-                // name, seq and .sn are set below
-                if (i_new_node < n_new_nodes - 1) // every iteration but the last
-                    new_node.arcs.push_back(graph.nodes.size() + 1);
 
                 assert(ssize(new_node.seq) < actual_chunk_size && i_old_node < path.size());
                 while (true)
@@ -534,21 +576,57 @@ inline void discretise(pf_graph & graph, index_options const & opts)
                 }
 
                 assert(ssize(new_node.seq) == actual_chunk_size);
-                graph.nodes.push_back(std::move(new_node));
             }
 
             assert(i_old_node == path.size()); // we processed all nodes in path
 
-            // add in-arcs to path
-            size_t const first_path_node_i = path.front();
-            size_t const first_new_node_i  = graph.nodes.size() - n_new_nodes;
-            for (node & n : graph.nodes)
-                for (size_t const target_node_i : n.arcs)
-                    if (target_node_i == first_path_node_i)
-                        n.arcs.push_back(first_new_node_i), ({ break; }); // :-)
+            size_t new_node_i          = 0; // index into graph
+            size_t previous_new_node_i = 0; // index into graph; because of reverse order, points to next node in path
 
-            // add out-arcs from path
-            graph.nodes.back().arcs = graph.nodes[path.back()].arcs;
+            /* This loops transfers nodes from temporary path and adds arcs; reverse order is easier for adding arcs */
+            for (int64_t new_path_i = new_path.size() - 1; new_path_i >= 0; --new_path_i)
+            {
+                node & tmp_new_node = new_path[new_path_i];
+
+                /* create new node (move from temp) or take existing */
+                if (auto it = graph.region_to_node_i.find(tmp_new_node.regions);
+                    it == graph.region_to_node_i.end() || graph.nodes[it->second].tobe_deleted)
+                {
+                    // move the node from temporary storage into graph
+                    graph.nodes.push_back(std::move(tmp_new_node));
+                    new_node_i = graph.nodes.size() - 1;
+
+                    graph.region_to_node_i[graph.nodes[new_node_i].regions] = new_node_i;
+                }
+                else // identical node already exists and not marked for deletion; latch onto that
+                {
+                    new_node_i = it->second;
+                }
+
+                node & actual_new_node = graph.nodes[new_node_i];
+
+                /* add arcs */
+                if (new_path_i == new_path.size() - 1) // terminal node of path, first in iteration
+                {
+                    // add outgoing arcs from oiriginal old_path
+                    assign_append(graph.nodes[path.back()].arcs, actual_new_node.arcs);
+                }
+                else // all previous node need to point at next
+                {
+                    actual_new_node.arcs.push_back(previous_new_node_i);
+                }
+
+                if (new_path_i == 0) // first node of path; last in iteration; needs in-arcs from first original node
+                {
+                    size_t const first_old_node_i = path.front();
+                    for (node & n : graph.nodes)
+                        for (size_t const target_node_i : n.arcs)
+                            if (target_node_i == first_old_node_i)
+                                n.arcs.push_back(new_node_i), ({ break; }); // :-)
+                }
+
+                previous_new_node_i = new_node_i;
+            }
         }
     }
 
@@ -557,6 +635,7 @@ inline void discretise(pf_graph & graph, index_options const & opts)
      * Remove the left-overs
      */
     erase_todo_nodes(graph);
+    deduplicate_arcs(graph);
 
     // print_all_paths(graph);
 
@@ -612,5 +691,7 @@ inline void discretise(pf_graph & graph, index_options const & opts)
 
     /* clean-up */
     erase_todo_nodes(graph);
+    deduplicate_arcs(graph);
     recompute_in_nodes(graph);
+    recompute_region_to_i(graph);
 }
