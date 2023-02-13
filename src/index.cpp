@@ -65,11 +65,7 @@ void index(index_options const & options)
 
     print_stats(graph);
 
-    fmt::print(stderr, "source_location: {}:{}\n", __FILE__, __LINE__);
-    std::cerr << std::flush;
     auto before_paths = all_paths_as_collapsed_regions(graph);
-    fmt::print(stderr, "source_location: {}:{}\n", __FILE__, __LINE__);
-    std::cerr << std::flush;
 
     discretise(graph, options);
 
@@ -104,5 +100,9 @@ void index(index_options const & options)
         for (auto const & pth : after_paths)
             fmt::print(file, "{}\n", pth);
         std::fclose(file);
+
+        fmt::print("Paths before transformation were written to before.txt\n");
+        fmt::print("Paths after transformation were written to after.txt\n");
+        fmt::print("Please run a diff on them.\n");
     }
 }

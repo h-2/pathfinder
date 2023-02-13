@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <list>
 #include <map>
+#include <numeric>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -231,18 +232,26 @@ inline void print_stats(pf_graph const & graph)
     std::ranges::sort(seq_lengths);
 
     fmt::print(
-      "Seq lengths\n| Q1\t| Q5\t| Q25\t| Q50\t | Q75\t | Q95\t | Q99\t |\n  {}\t  {}\t  {}\t  {}\t  {}\t  {}\t  {}\n",
+      "Seq lengths\n| min\t| Q1\t| Q5\t| Q25\t| Q50\t| Q75\t| Q95\t| Q99\t| max\t|\n  {}\t  {}\t  {}\t  {}\t  {}\t  "
+      "{}\t  {}\t  {}\t  {}\n",
+      seq_lengths.front(),
       seq_lengths[seq_lengths.size() * 0.01],
       seq_lengths[seq_lengths.size() * 0.05],
       seq_lengths[seq_lengths.size() * 0.25],
       seq_lengths[seq_lengths.size() * 0.50],
       seq_lengths[seq_lengths.size() * 0.75],
       seq_lengths[seq_lengths.size() * 0.95],
-      seq_lengths[seq_lengths.size() * 0.99]);
-    fmt::print("| min\t| avg  \t| max\t|\n   {}\t  {:.2f}\t  {}\n",
-               seq_lengths.front(),
-               std::reduce(seq_lengths.begin(), seq_lengths.end(), 0.0) / seq_lengths.size(),
-               seq_lengths.back());
+      seq_lengths[seq_lengths.size() * 0.99],
+      seq_lengths.back());
+
+    double const mean = std::reduce(seq_lengths.begin(), seq_lengths.end(), 0.0) / seq_lengths.size();
+    double const stdd = std::sqrt(std::transform_reduce(seq_lengths.begin(),
+                                                        seq_lengths.end(),
+                                                        0.0,
+                                                        std::plus{},
+                                                        [mean](double val) { return (val - mean) * (val - mean); }) /
+                                  seq_lengths.size());
+    fmt::print("| mean\t| stdd\t|\n  {:.2f}\t  {:.2f}\n", mean, stdd);
     fmt::print("\n");
 }
 
@@ -390,18 +399,24 @@ inline void discretise(pf_graph & graph, index_options const & opts)
 
     /* Step 2:
      *
-     * Generate all non-ref paths, split those paths and add new nodes and arcs for them
+     * For every non-ref path, the "concatenation" is created and then that is then split into a new path
+     * of equally sized chunks that are of the same length (except the last because of rounding).
+     * Ideally each chunk's size should be == w. If this is not possible, there different strategies:
      *
-     * Currently for a path of length n > 1.5*w, this path is split into equally sized chunks close to w
+     * 1) chunk_size and last_chunk_size may both be != w, but are always w+-0.5w and are very close to each other.
+     * This reduces outliers.
+     * e.g. total_length of path = 82 and w = 10 then n_new_nodes == 8, chunk_size == 9,  last_chunk_size == 10
      *
-     * A different strategy would be to split into m chunks of size exactly == w plus one chunk of size <=0.5w.
-     * This strategy would produce many identical nodes from different overlapping paths which would
-     * allow joining these again, which might simplify the graph significantly. But it would also create
-     * more trailing nodes with small sizes.
+     * 2) Always set chunk_size = w; but difference between chunk_size and last_chunk_size will be bigger
+     * This strategy produces more identical nodes from different overlapping paths which would
+     * allow joining these again, which might simplify the graph significantly. [This is not yet done.]
+     * But it also produces bigger outliers, higher variance in node sizes.
+     * e.g. total_length of path = 82 and w = 10 then n_new_nodes == 8, chunk_size == 10,  last_chunk_size == 12
+     *
+     * It is possible to switch with a macro between these modes; currently 2 is the default
      */
-
     {
-        std::vector<std::vector<size_t>> paths = generate_all_non_ref_paths(graph);
+        std::vector<std::vector<size_t>> const paths = generate_all_non_ref_paths(graph);
 
         // DEBUG
         // for (std::vector<size_t> & path : paths)
@@ -411,25 +426,28 @@ inline void discretise(pf_graph & graph, index_options const & opts)
         //                                             { return graph.nodes[i].name; }));
         // }
 
-        for (std::vector<size_t> & path : paths)
+        for (std::vector<size_t> const & path : paths)
         {
             auto seqs  = path | std::views::transform([&](size_t i) -> auto & { return graph.nodes[i].seq; });
             auto sizes = seqs | std::views::transform([](auto && span) { return span.size(); });
 
             int64_t const total_length = std::reduce(sizes.begin(), sizes.end(), 0l);
-            if (total_length <= 1.5 * w)
-                continue;
-            int64_t const n_new_nodes = (total_length + (w / 2)) / w;
+            int64_t const n_new_nodes  = std::max<int64_t>((total_length + (w / 2)) / w, 1);
             assert(n_new_nodes >= 1);
 
-            // the chunk size is ideally equal to the window size w but likely something w+-0.5w
+            // the chunk size is ideally equal to the window size w but may deviate within w+-0.5w
+            // the only time chunk_size maybe smaller than 0.5w is if the total_length is also < 0.5w
+#if 0
             int64_t const chunk_size = (total_length + (n_new_nodes / 2)) / n_new_nodes;
-            assert(double(chunk_size) >= 0.5 * w);
+#else
+            int64_t const chunk_size = std::min(w, total_length);
+#endif
+            assert(double(chunk_size) >= 0.5 * w || chunk_size == total_length);
             assert(double(chunk_size) <= 1.5 * w);
             assert((n_new_nodes - 1) * chunk_size < total_length);
             // the last chunk may have a different size if total_length has rest; see description above
             int64_t const last_chunk_size = total_length - (n_new_nodes - 1) * chunk_size;
-            assert(double(last_chunk_size) >= 0.5 * w);
+            assert(double(last_chunk_size) >= 0.5 * w || last_chunk_size == total_length);
             assert(double(last_chunk_size) <= 1.5 * w);
 
             size_t  i_old_node      = 0ul;
@@ -451,6 +469,7 @@ inline void discretise(pf_graph & graph, index_options const & opts)
                 {
                     node & old_node = graph.nodes[path[i_old_node]];
                     assert(old_node_offset < ssize(old_node.seq));
+
                     std::span     old_seq{old_node.seq | std::views::drop(old_node_offset)};
                     int64_t const desired_size   = actual_chunk_size - ssize(new_node.seq);
                     int64_t const available_size = ssize(old_seq);
@@ -500,7 +519,7 @@ inline void discretise(pf_graph & graph, index_options const & opts)
                         old_node_offset += taken_size;
 
                         /* upkeep */
-                        // n_i unchanged; do not go to next old_node
+                        // i_old_node unchanged; do not go to next old_node
                     }
 
                     if (ssize(new_node.seq) < actual_chunk_size && i_old_node < path.size())
@@ -517,6 +536,8 @@ inline void discretise(pf_graph & graph, index_options const & opts)
                 assert(ssize(new_node.seq) == actual_chunk_size);
                 graph.nodes.push_back(std::move(new_node));
             }
+
+            assert(i_old_node == path.size()); // we processed all nodes in path
 
             // add in-arcs to path
             size_t const first_path_node_i = path.front();
