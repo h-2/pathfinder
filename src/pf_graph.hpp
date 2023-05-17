@@ -442,13 +442,13 @@ inline void discretise(pf_graph & graph, index_options const & opts)
      *
      * 1) chunk_size and last_chunk_size may both be != w, but are always w+-0.5w and are very close to each other.
      * This reduces outliers.
-     * e.g. total_length of path = 82 and w = 10 then n_new_nodes == 8, chunk_size == 9,  last_chunk_size == 10
+     * e.g. total_length of path = 85 and w = 10 then n_new_nodes == 9, chunk_size == 9,  last_chunk_size == 13
      *
      * 2) Always set chunk_size = w; but difference between chunk_size and last_chunk_size will be bigger
-     * This strategy produces more identical nodes from different overlapping paths which would
-     * allow joining these again, which might simplify the graph significantly. [This is not yet done.]
+     * This strategy produces more identical nodes from different overlapping paths which allows re-using these
+     * between different alternative path, which might simplify the graph significantly.
      * But it also produces bigger outliers, higher variance in node sizes.
-     * e.g. total_length of path = 82 and w = 10 then n_new_nodes == 8, chunk_size == 10,  last_chunk_size == 12
+     * e.g. total_length of path = 85 and w = 10 then n_new_nodes == 9, chunk_size == 10,  last_chunk_size == 5
      *
      * It is possible to switch with a macro between these modes; currently 2 is the default
      *
@@ -482,7 +482,7 @@ inline void discretise(pf_graph & graph, index_options const & opts)
 
             // the chunk size is ideally equal to the window size w but may deviate within w+-0.5w
             // the only time chunk_size maybe smaller than 0.5w is if the total_length is also < 0.5w
-#if 0
+#ifdef PATHFINDER_CHUNK_SIZE_VARIANT_1
             int64_t const chunk_size = (total_length + (n_new_nodes / 2)) / n_new_nodes;
 #else
             int64_t const chunk_size = std::min(w, total_length);
@@ -684,9 +684,8 @@ inline void discretise(pf_graph & graph, index_options const & opts)
         next_n.tobe_deleted = true;
     };
 
-    // TODO do we need multiple passes of this on larger graphs?
     for (node & n : graph.nodes)
-        if (n.is_ref && !n.tobe_deleted && can_consume_next(n))
+        while (n.is_ref && !n.tobe_deleted && can_consume_next(n))
             consume_next(n);
 
     /* clean-up */
